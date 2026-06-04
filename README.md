@@ -61,7 +61,7 @@ After clicking **Generate**, the tool runs the SA optimisation and displays:
 - The design matrix
 - Choice probabilities based on the prior
 
-Results can be exported to Qualtrics (`.txt` or `.qsf` format) directly from the results window.
+Results can be exported to Qualtrics (`.txt` format) directly from the results window.
 
 ---
 
@@ -133,7 +133,6 @@ result.export_qualtrics('my_survey');
 
 ```
 
-The `.qsf` file can be imported directly into Qualtrics via **Survey → Import Survey**.
 
 ---
 
