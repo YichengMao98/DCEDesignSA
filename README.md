@@ -164,5 +164,5 @@ This project is licensed under the MIT License. See `LICENSE` for details.
 
 ## Author
 
-Developed by [YinfuLiu](https://github.com/YinfuLiu).  
+
 For questions or bug reports, please open an issue on GitHub.
