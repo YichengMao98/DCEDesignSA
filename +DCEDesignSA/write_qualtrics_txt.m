@@ -51,12 +51,12 @@ function write_qualtrics_txt(design_struct, filename, format, custom_title, f)
         q_str = sprintf("<div style='font-family: sans-serif; font-size: 18px; font-weight: bold; margin-bottom: 10px;'>Choice Set %d</div>", i) + ...
                 sprintf("<div style='font-family: sans-serif; margin-bottom: 15px;'>%s</div>", custom_title);
             
-        q_str = q_str + "<table style='width:100%%; border-collapse: collapse; font-family: sans-serif; table-layout: fixed; text-align: center; border: 1px solid #000;'>";
+        q_str = q_str + "<table style='width:100%; border-collapse: collapse; font-family: sans-serif; table-layout: fixed; text-align: center; border: 1px solid #000;'>";
         
         % 3. Table Rendering (Only for Real Options)
         % Header Row
         q_str = q_str + "<thead><tr style='border-bottom: 1px solid #000; background-color: #f2f2f2;'>" + ...
-                        "<th style='padding: 10px; border-right: 1px solid #000; width: 25%%; text-align: left;'>Attribute</th>";
+                        "<th style='padding: 10px; border-right: 1px solid #000; width: 25%; text-align: left;'>Attribute</th>";
         for count = 1:num_real_options
             q_str = q_str + sprintf("<th style='padding: 10px; border-right: 1px solid #000;'>Option %c</th>", char(64+count));
         end

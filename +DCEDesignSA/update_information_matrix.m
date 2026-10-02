@@ -1,4 +1,4 @@
-function [new_DB, infomats_new] = update_information_matrix(current_X, X_new, nlevels, interactions, csRows, pts, wts, current_infomats, order_effect, coding, no_choice)
+function [new_DB, infomats_new, new_inf_error] = update_information_matrix(current_X, X_new, nlevels, interactions, csRows, pts, wts, current_infomats, order_effect, coding, no_choice)
 % UPDATE_INFORMATION_MATRIX Efficiently updates the Fisher information matrices
 % for the modified choice set and computes the new Bayesian D-optimality value.
 %
@@ -9,7 +9,7 @@ function [new_DB, infomats_new] = update_information_matrix(current_X, X_new, nl
 %
 %   When order_effect is true, the presentation order column is stripped
 %   before coding. When no_choice is true, the no_choice flag is forwarded
-%   to transform_design so that the ASC column is correctly prepended.
+%   to transform_design so that the ASC column is correctly appended.
 %
 %   INPUTS:
 %       current_X       - (matrix) Current design matrix before modification.
@@ -30,10 +30,19 @@ function [new_DB, infomats_new] = update_information_matrix(current_X, X_new, nl
 %                         Default: false.
 %
 %   OUTPUTS:
-%       new_DB       - (scalar) Updated Bayesian D-optimality value. Returns
-%                      -10000 if any information matrix becomes singular.
-%       infomats_new - (3D matrix) Updated Fisher information matrices of
-%                      size (K x K x S).
+%       new_DB        - (scalar) Updated Bayesian D-optimality value. Pinned
+%                       to exactly -10000 if any information matrix becomes
+%                       singular/indefinite for any of the S draws (the
+%                       accumulated log-det sum from the remaining draws
+%                       is discarded in that case, not added on top).
+%       infomats_new  - (3D matrix) Updated Fisher information matrices of
+%                       size (K x K x S).
+%       new_inf_error - (scalar) Fraction of the S prior draws for which the
+%                       updated information matrix is singular/indefinite
+%                       (det < 0), i.e. the same "infinite D-error" quantity
+%                       computed by calc_BayesianD.m, kept in sync with
+%                       new_DB at every SA iteration instead of only at the
+%                       initial random design.
 
 
 
@@ -46,6 +55,7 @@ function [new_DB, infomats_new] = update_information_matrix(current_X, X_new, nl
     X_sel_new = X_new_code(csRows, :);
     infomats_new = zeros(size(X_sel, 2), size(X_sel, 2), length(wts));
     new_DB = 0;
+    inf_count = 0;
 
     for idx = 1:length(wts)
         beta = pts(:, idx);
@@ -62,8 +72,16 @@ function [new_DB, infomats_new] = update_information_matrix(current_X, X_new, nl
         if det(info_new) >= 0
             new_DB = new_DB + log(det(info_new)) * wts(idx);
         else
-% Penalise singular or indefinite information matrices
-            new_DB = -10000;
+            inf_count = inf_count + 1;
         end
+    end
+
+    new_inf_error = inf_count / length(wts);
+    if inf_count > 0
+% Penalise singular or indefinite information matrices. Pinned exactly to
+% -10000 here (rather than overwritten mid-loop) so new_DB is a stable
+% function of new_inf_error: any later non-singular draws' log-det terms
+% are discarded, not added on top of the sentinel.
+        new_DB = -10000;
     end
 end

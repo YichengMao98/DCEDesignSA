@@ -8,7 +8,7 @@ classdef Result
         TimeTaken       % Execution time
         Metadata        % Struct for additional info
         AvgProbs        % Choice probabilities [N_alts x N_sets]
-        InfError        % Percentage of draws with infinite D-error
+        InfError        % Fraction (0-1) of draws with infinite/invalid D-error
     end
 
     methods
@@ -33,21 +33,26 @@ classdef Result
 
         function summary(obj)
             meta           = obj.Metadata;
-            no_choice      = isfield(meta,'no_choice')    && meta.no_choice;
-            interaction    = isfield(meta,'interactions') && ~isempty(meta.interactions);
-            fixed_profiles = meta.f;
-            order_effect   = isfield(meta,'order_effect') && meta.order_effect;
+            no_choice        = isfield(meta,'no_choice')    && meta.no_choice;
+            interaction      = isfield(meta,'interactions') && ~isempty(meta.interactions);
+            fixed_attributes = meta.f;
+            order_effect     = isfield(meta,'order_effect') && meta.order_effect;
 
             fprintf('\n================ EXPERIMENTAL DESIGN SUMMARY ================\n');
-            fprintf('%-25s %s\n',  'Optimization Status:', 'Complete');
-            fprintf('%-25s %s\n',  'Opt-out Option:',      string(no_choice));
-            fprintf('%-25s %d\n',  'Fixed Profiles:',      fixed_profiles);
-            fprintf('%-25s %s\n',  'Interaction Model:',   string(interaction));
-            fprintf('%-25s %s\n',  'Order Effect:',        string(order_effect));
+            fprintf('%-29s %s\n',  'Optimization Status:', 'Complete');
+            fprintf('%-29s %s\n',  'Opt-out Option:',      string(no_choice));
+            fprintf('%-29s %d\n',  'Fixed Attributes:',    fixed_attributes);
+            fprintf('%-29s %s\n',  'Interaction Model:',   string(interaction));
+            fprintf('%-29s %s\n',  'Order Effect:',        string(order_effect));
+            if isfield(meta,'seed') && ~isempty(meta.seed)
+                fprintf('%-29s %d\n', 'Random Seed:', meta.seed);
+            else
+                fprintf('%-29s %s\n', 'Random Seed:', 'not set');
+            end
             fprintf('------------------------------------------------------------\n');
-            fprintf('%-25s %.6f\n',    'D-Value:',             obj.D_Value);
-            fprintf('%-25s %.2f%%\n',  'Inf. Error (Draws):',  obj.InfError);
-            fprintf('%-25s %.2f seconds\n', 'Execution Time:', obj.TimeTaken);
+            fprintf('The design achieved a Bayesian D-optimality Criterion value of %.6f.\n', obj.D_Value);
+            fprintf('%-29s %.2f%%\n',  'Invalid Draws:',               obj.InfError * 100);
+            fprintf('%-29s %.2f seconds\n', 'Execution Time:',         obj.TimeTaken);
             fprintf('============================================================\n\n');
         end
 

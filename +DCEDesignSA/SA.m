@@ -102,28 +102,28 @@ function [global_best_X, global_best_D, total_time,final_inf_error] = SA(X, cset
             [csRows, X_new] = DCEDesignSA.perturb(current_X, n_alt, nlevels, f, interactions, order_effect, no_choice);
  
 % Efficiently update the information matrix for the modified choice set only
-            [new_DB, infomats_new] = DCEDesignSA.update_information_matrix(current_X, X_new, nlevels, interactions, csRows, pts, wts, current_infomats, order_effect, coding, no_choice);
- 
+            [new_DB, infomats_new, new_inf_err] = DCEDesignSA.update_information_matrix(current_X, X_new, nlevels, interactions, csRows, pts, wts, current_infomats, order_effect, coding, no_choice);
+
 % Metropolis acceptance criterion: always accept improvements, accept
-% deteriorations with a probability that decreases as temperature falls
-            if new_DB >= current_D
+% deteriorations with a probability that decreases as temperature falls.
+% "||" short-circuits, so rand() is only drawn when new_DB < current_D,
+% matching the original if/elseif's behaviour exactly.
+            accept = (new_DB >= current_D) || (rand() < exp((new_DB - current_D) / temp));
+            if accept
                 current_X        = X_new;
                 current_D        = new_DB;
                 current_infomats = infomats_new;
-                no_accept        = 0;
-            elseif rand() < exp((new_DB - current_D) / temp)
-                current_X        = X_new;
-                current_D        = new_DB;
-                current_infomats = infomats_new;
+                current_inf_err  = new_inf_err;
                 no_accept        = 0;
             else
                 no_accept = no_accept + 1;
             end
- 
+
             elapsed_time = toc(start_time);
             if current_D > global_best_D
-                global_best_X     = current_X;
-                global_best_D     = current_D;
+                global_best_X         = current_X;
+                global_best_D         = current_D;
+                global_best_inf_error = current_inf_err;
                 improved_in_cycle = true;
                % fprintf('cycle: %d, total_iter: %d, time: %.4f, DB_best: %.6f\n', ...
                  %   cycle, total_iter, elapsed_time, global_best_D);

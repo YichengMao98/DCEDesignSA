@@ -24,7 +24,7 @@ classdef dce_tool < matlab.apps.AppBase
 
     properties (Constant, Access = private)
         MAX_LEVELS = 6
-        INACTIVE   = '—'
+        INACTIVE   = char(8212)   % em dash; built with char() so the source file stays pure ASCII
     end
 
     properties (Access = public)
@@ -74,6 +74,7 @@ classdef dce_tool < matlab.apps.AppBase
         TermCycleBtn      matlab.ui.control.RadioButton
         MaxValueLabel     matlab.ui.control.Label
         MaxValueField     matlab.ui.control.NumericEditField
+        AdvSettingsBtn    matlab.ui.control.Button
         GenerateBtn       matlab.ui.control.Button
     end
 
@@ -133,6 +134,18 @@ classdef dce_tool < matlab.apps.AppBase
             for c = 1:nL
                 names{c} = app.stripQuotes(char(row{2+c}));
             end
+        end
+
+        % ── HTML TAG STRIPPING ───────────────────────────────────────
+        % evalc()-captured disp() output of a MATLAB table (used by
+        % Result.summary/show_level_balance/prior_average_prob) embeds
+        % <strong>...</strong> markup for bold headers/row-name column.
+        % An interactive command window renders that invisibly as bold
+        % text, but a plain uitextarea doesn't interpret HTML, so the
+        % literal tags would otherwise show up as-is. Strip anything that
+        % looks like an HTML tag before it reaches the results window.
+        function s = stripHtml(~, raw)
+            s = regexprep(raw, '<[^>]+>', '');
         end
 
     end
@@ -311,11 +324,14 @@ classdef dce_tool < matlab.apps.AppBase
             if dim == 0, return; end
 
             app.DCEData.ModelTerms = modelItems;
+            app.DCEData.BaseLabels = labels;
             app.DCEData.Labels     = labels;
             app.DCEData.PriorMean  = zeros(dim,1);
             app.DCEData.PriorVar   = eye(dim);
 
-            app.rebuildPriorTables(labels, zeros(dim,1), eye(dim));
+            % Adds order-position / ASC rows for whichever Step 4 options are
+            % currently ticked (also correct after Back -> Confirm).
+            app.refreshPriorTables();
             app.lockStep2(true);
             app.Step3Panel.Visible = 'on';
             app.Step4Panel.Visible = 'on';
@@ -330,11 +346,21 @@ classdef dce_tool < matlab.apps.AppBase
         end
 
         % ── Step 3: Covariance cell edit ──────────────────────────────
+        % Only the upper triangle (j >= i) is editable by convention; the
+        % lower triangle mirrors it and is display-only. uitable applies the
+        % keystroke to its internal Data before this callback runs, so a
+        % lower-triangle edit must be explicitly reverted here or the widget
+        % is left showing a value the backend model never received.
         function VarTableCellEdit(app, ~, event)
             i = event.Indices(1);  j = event.Indices(2);
+            if j < i
+                data      = app.VarTable.Data;
+                data{i,j} = event.PreviousData;
+                app.VarTable.Data = data;
+                return;
+            end
             val = event.NewData;
             if ~isnumeric(val)||isnan(val), val = 0; end
-            if j < i, return; end
             data = app.VarTable.Data;
             data{i,j} = val;  data{j,i} = val;
             app.VarTable.Data         = data;
@@ -349,29 +375,71 @@ classdef dce_tool < matlab.apps.AppBase
             app.Step4Panel.Visible = 'off';
         end
 
-        % ── Step 4: No-choice checkbox ────────────────────────────────
-        function NoChoiceChanged(app, ~, ~)
+        % ── Step 4: options that add/remove prior parameters ──────────
+        % Bound to the no-choice checkbox, the order-effect checkbox and the
+        % alternatives-per-set field: each changes which extra parameters
+        % (order positions, ASC) the model has, so the prior tables are
+        % rebuilt from the model terms plus the current option state.
+        function PriorStructureChanged(app, ~, ~)
             if app.Step3Panel.Visible ~= "on", return; end
-            if isempty(app.DCEData.Labels),     return; end
-            checked = app.NoChoiceChk.Value;
-            curMean = app.DCEData.PriorMean;
-            curVar  = app.DCEData.PriorVar;
-            curLbls = app.DCEData.Labels;
-            if checked
-                newMean = [curMean(:); 0];
-                newVar  = zeros(size(curVar,1)+1);
-                newVar(1:end-1,1:end-1) = curVar;
-                newVar(end,end)         = 1;
-                newLbls = [curLbls, {'ASC (no-choice)'}];
-            else
-                if numel(curLbls) < 2, return; end
-                newMean = curMean(1:end-1);
-                newVar  = curVar(1:end-1,1:end-1);
-                newLbls = curLbls(1:end-1);
+            app.syncPriorFromTables();
+            app.refreshPriorTables();
+        end
+
+        % Pull whatever is currently shown in the Step 3 tables into DCEData,
+        % so values typed by the user survive a rebuild of the tables.
+        function syncPriorFromTables(app)
+            dim = numel(app.DCEData.Labels);
+            mCell = app.MeanTable.Data;
+            vCell = app.VarTable.Data;
+            if dim == 0 || size(mCell,1) ~= dim || ~isequal(size(vCell), [dim dim])
+                return;
             end
+            for i = 1:dim
+                v = mCell{i,1};
+                if isnumeric(v) && ~isnan(v), app.DCEData.PriorMean(i) = v; end
+                for j = i:dim
+                    v = vCell{i,j};
+                    if isnumeric(v) && ~isnan(v)
+                        app.DCEData.PriorVar(i,j) = v;
+                        app.DCEData.PriorVar(j,i) = v;
+                    end
+                end
+            end
+        end
+
+        % Rebuild the Step 3 prior tables as
+        %   [model terms | order positions (if order effect) | ASC (if no-choice)]
+        % keeping any value the user already typed for a parameter that is
+        % still present; new parameters start at mean 0, variance 1 with no
+        % covariance (the naive prior of Mao, Kessels & Mee 2025 for alpha).
+        function refreshPriorTables(app)
+            base = app.DCEData.BaseLabels;
+            if isempty(base), return; end
+            newLbls = base;
+            if app.OrderEffectChk.Value
+                for j = 1:(app.NAltsField.Value - 1)
+                    newLbls{end+1} = sprintf('Order position %d', j); %#ok<AGROW>
+                end
+            end
+            if app.NoChoiceChk.Value
+                newLbls{end+1} = 'ASC (no-choice)';
+            end
+
+            oldLbls = app.DCEData.Labels;
+            oldMean = app.DCEData.PriorMean(:);
+            oldVar  = app.DCEData.PriorVar;
+            n       = numel(newLbls);
+            newMean = zeros(n,1);
+            newVar  = eye(n);
+            [tf, loc] = ismember(newLbls, oldLbls);
+            keep = find(tf);
+            newMean(keep)       = oldMean(loc(keep));
+            newVar(keep, keep)  = oldVar(loc(keep), loc(keep));
+
+            app.DCEData.Labels    = newLbls;
             app.DCEData.PriorMean = newMean;
             app.DCEData.PriorVar  = newVar;
-            app.DCEData.Labels    = newLbls;
             app.rebuildPriorTables(newLbls, newMean, newVar);
         end
 
@@ -484,16 +552,21 @@ classdef dce_tool < matlab.apps.AppBase
             end
 
             optArgs = [attrArg, { ...
-                'f',            app.DCEData.NFixed, ...
-                'interactions', interactions, ...
-                'termination',  app.DCEData.Termination, ...
-                'order_effect', app.DCEData.OrderEffect, ...
-                'coding',       'effect', ...
-                'no_choice',    app.DCEData.NoChoice, ...
-                'prior_mean',   app.DCEData.PriorMean(:)', ...
-                'prior_var',    app.DCEData.PriorVar }];
+                'f',                app.DCEData.NFixed, ...
+                'interactions',     interactions, ...
+                'termination',      app.DCEData.Termination, ...
+                'order_effect',     app.DCEData.OrderEffect, ...
+                'coding',           app.DCEData.Coding, ...
+                'no_choice',        app.DCEData.NoChoice, ...
+                'prior_mean',       app.DCEData.PriorMean(:)', ...
+                'prior_var',        app.DCEData.PriorVar, ...
+                'sampling_method',  app.DCEData.SamplingMethod, ...
+                'n_draws',          app.DCEData.NDraws }];
             if ~isempty(app.DCEData.MaxValue)
                 optArgs = [optArgs, {'max_value', app.DCEData.MaxValue}];
+            end
+            if app.DCEData.UseSeed
+                optArgs = [optArgs, {'seed', app.DCEData.Seed}];
             end
 
             % ── Progress dialog ───────────────────────────────────────
@@ -515,12 +588,116 @@ classdef dce_tool < matlab.apps.AppBase
                 close(dlg);
                 app.GenerateBtn.Enable = 'on';
                 app.LastResult = result;
+
+                % If the sampling method actually used more draws than the
+                % user requested (floored up to the SR point count — see
+                % DCEDesignSA.priors), surface that here: priors.m only
+                % emits a console warning(), which is easy to miss in a
+                % GUI session, and Advanced Settings would otherwise keep
+                % showing the smaller number the user originally typed.
+                meta = result.Metadata;
+                if isfield(meta,'n_draws_used') && isfield(meta,'n_draws_requested') ...
+                        && meta.n_draws_used > meta.n_draws_requested
+                    app.DCEData.NDraws = meta.n_draws_used;
+                    uialert(app.UIFigure, sprintf( ...
+                        ['The requested number of draws (%d) was below the minimum ' ...
+                         'needed for reliable results with "%s" sampling and was ' ...
+                         'automatically raised to %d. Advanced Settings has been ' ...
+                         'updated to reflect this.'], ...
+                        meta.n_draws_requested, meta.sampling_method, meta.n_draws_used), ...
+                        'Number of Draws Adjusted', 'Icon','info');
+                end
+
                 app.openResultsWindow(result);
             catch ME
                 close(dlg);
                 app.GenerateBtn.Enable = 'on';
                 uialert(app.UIFigure, ME.message, 'Generate Error','Icon','error');
             end
+        end
+
+        % ── Advanced Settings dialog ────────────────────────────────────
+        % Small pop-up for options that don't need a permanent spot on the
+        % main Step 4 panel: attribute coding scheme and the prior
+        % sampling/quadrature method used to approximate the Bayesian
+        % D-optimality integral. Values are written to app.DCEData only
+        % when "Apply" is pressed; "Cancel" discards changes.
+        function AdvSettingsButtonPushed(app, ~, ~)
+            dlg = uifigure( ...
+                'Name', 'Advanced Settings', ...
+                'Position', [500 340 360 320], ...
+                'Resize', 'off');
+
+            uilabel(dlg, 'Text','Attribute coding:', 'FontWeight','bold', ...
+                'Position',[15 270 160 22]);
+            ctl.coding = uidropdown(dlg, ...
+                'Items', {'effect','dummy'}, 'Value', app.DCEData.Coding, ...
+                'Position',[180 270 160 22]);
+
+            uilabel(dlg, 'Text','Prior sampling method:', 'FontWeight','bold', ...
+                'Position',[15 230 160 22]);
+            ctl.method = uidropdown(dlg, ...
+                'Items', {'SR','halton','PMC'}, 'Value', app.DCEData.SamplingMethod, ...
+                'Position',[180 230 160 22]);
+
+            uilabel(dlg, 'Text','Number of draws:', 'Position',[15 192 160 22]);
+            ctl.ndraws = uieditfield(dlg, 'numeric', ...
+                'Value', app.DCEData.NDraws, 'Limits',[1 1e6], ...
+                'RoundFractionalValues','on', ...
+                'Enable', matlab.lang.OnOffSwitchState(~strcmp(app.DCEData.SamplingMethod,'SR')), ...
+                'Position',[180 192 160 22]);
+
+            uilabel(dlg, ...
+                'Text', ['SR is a deterministic rule; its point count is fixed ' ...
+                         'by the model and "Number of draws" is ignored. For ' ...
+                         'Halton/PMC, a value smaller than SR''s own point ' ...
+                         'count is automatically raised to match it.'], ...
+                'WordWrap','on', 'FontSize',9, 'FontColor',[0.45 0.45 0.45], ...
+                'Position',[15 140 330 46]);
+
+            ctl.useSeed = uicheckbox(dlg, 'Text','Fixed random seed:', ...
+                'FontWeight','bold', 'Value', app.DCEData.UseSeed, ...
+                'Position',[15 104 160 22]);
+            ctl.seed = uieditfield(dlg, 'numeric', ...
+                'Value', app.DCEData.Seed, 'Limits',[0 2^32-2], ...
+                'RoundFractionalValues','on', ...
+                'Enable', matlab.lang.OnOffSwitchState(app.DCEData.UseSeed), ...
+                'Position',[180 104 160 22]);
+
+            uilabel(dlg, ...
+                'Text', ['With a seed, repeated runs use the same random ' ...
+                         'numbers. Exact reproducibility needs "Adaptive" or ' ...
+                         '"Cycles" termination: with "Time (s)", the number of ' ...
+                         'iterations depends on machine speed, so results can ' ...
+                         'still differ.'], ...
+                'WordWrap','on', 'FontSize',9, 'FontColor',[0.45 0.45 0.45], ...
+                'Position',[15 52 330 46]);
+
+            ctl.method.ValueChangedFcn = @(src,~) set(ctl.ndraws, ...
+                'Enable', matlab.lang.OnOffSwitchState(~strcmp(src.Value,'SR')));
+            ctl.useSeed.ValueChangedFcn = @(src,~) set(ctl.seed, ...
+                'Enable', matlab.lang.OnOffSwitchState(src.Value));
+
+            uibutton(dlg, 'Text','Apply', ...
+                'BackgroundColor',[0.70 1.00 0.70], ...
+                'Position',[180 14 80 28], ...
+                'ButtonPushedFcn', @(~,~) app.AdvSettingsApplyPushed(dlg, ctl));
+            uibutton(dlg, 'Text','Cancel', ...
+                'Position',[265 14 80 28], ...
+                'ButtonPushedFcn', @(~,~) close(dlg));
+        end
+
+        % ── Advanced Settings: Apply ────────────────────────────────────
+        % Named method (rather than a closure nested in AdvSettingsButtonPushed)
+        % to match every other dialog-triggered callback in this file, e.g.
+        % doExportQualtrics/doExportCSV — readable and testable on its own.
+        function AdvSettingsApplyPushed(app, dlg, ctl)
+            app.DCEData.Coding         = ctl.coding.Value;
+            app.DCEData.SamplingMethod = ctl.method.Value;
+            app.DCEData.NDraws         = ctl.ndraws.Value;
+            app.DCEData.UseSeed        = ctl.useSeed.Value;
+            app.DCEData.Seed           = ctl.seed.Value;
+            close(dlg);
         end
 
         % ── Lock / unlock helpers ─────────────────────────────────────
@@ -578,7 +755,8 @@ classdef dce_tool < matlab.apps.AppBase
             % Tab 1 – Summary + balance
             t1 = uitab(tg,'Title','Summary & Balance');
             uitextarea(t1, ...
-                'Value',    [evalc('result.summary()'), newline, evalc('result.show_level_balance()')], ...
+                'Value',    [app.stripHtml(evalc('result.summary()')), newline, ...
+                             app.stripHtml(evalc('result.show_level_balance()'))], ...
                 'Editable','off','FontName','Courier New','FontSize',11, ...
                 'Position',[10 10 900 645]);
 
@@ -599,7 +777,7 @@ classdef dce_tool < matlab.apps.AppBase
             % Tab 3 – Choice probabilities
             t3 = uitab(tg,'Title','Choice Probabilities');
             uitextarea(t3, ...
-                'Value',    evalc('result.prior_average_prob()'), ...
+                'Value',    app.stripHtml(evalc('result.prior_average_prob()')), ...
                 'Editable','off','FontName','Courier New','FontSize',11, ...
                 'Position',[10 10 900 645]);
 
@@ -677,7 +855,7 @@ classdef dce_tool < matlab.apps.AppBase
             uilabel(app.Step1Panel, ...
                 'Text',['Levels: choose count then click "+ Add".  ' ...
                         'To change an existing row: select it, pick a count, click "Set Levels".  ' ...
-                        'Col 3+: level names — click any cell to rename.'], ...
+                        'Col 3+: level names - click any cell to rename.'], ...
                 'WordWrap','on','Position',[12 374 625 34]);
 
             % ── Toolbar layout ────────────────────────────────────────
@@ -764,7 +942,7 @@ classdef dce_tool < matlab.apps.AppBase
                 'Position',[675 410 515 400],'Visible','off');
 
             app.BackToStep2Btn = uibutton(app.Step3Panel, ...
-                'Text','<< Back  Step 2','Position',[10 364 138 26], ...
+                'Text','<< Back  Step 2','Position',[10 349 138 26], ...
                 'ButtonPushedFcn',@app.BackToStep2Pushed);
 
             app.MeanLabel = uilabel(app.Step3Panel, ...
@@ -797,21 +975,24 @@ classdef dce_tool < matlab.apps.AppBase
                 'Text','Alternatives per choice set:','Position',[15 300 195 22]);
             app.NAltsField = uieditfield(app.Step4Panel,'numeric', ...
                 'Value',2,'Limits',[2 20],'RoundFractionalValues','on', ...
+                'ValueChangedFcn',@app.PriorStructureChanged, ...
                 'Position',[218 300 80 22]);
 
             app.NFixedLabel = uilabel(app.Step4Panel, ...
-                'Text','Number of fixed profiles:','Position',[15 260 195 22]);
+                'Text','Number of fixed attributes:','Position',[15 260 195 22]);
             app.NFixedField = uieditfield(app.Step4Panel,'numeric', ...
                 'Value',0,'Limits',[0 99],'RoundFractionalValues','on', ...
                 'Position',[218 260 80 22]);
 
             app.NoChoiceChk = uicheckbox(app.Step4Panel, ...
                 'Text','Include no-choice option','Value',false, ...
-                'Position',[15 224 240 22],'ValueChangedFcn',@app.NoChoiceChanged);
+                'Position',[15 224 240 22],'ValueChangedFcn',@app.PriorStructureChanged);
 
             app.OrderEffectChk = uicheckbox(app.Step4Panel, ...
                 'Text','Account for order effect','Value',false, ...
-                'Position',[15 194 240 22]);
+                'Tooltip',['Adds (alternatives - 1) profile-position parameters ' ...
+                           'to the model and its priors (Mao, Kessels & Mee 2025)'], ...
+                'Position',[15 194 240 22],'ValueChangedFcn',@app.PriorStructureChanged);
 
             app.Sep4Label = uilabel(app.Step4Panel, ...
                 'Text','','BackgroundColor',[0.65 0.65 0.65], ...
@@ -839,6 +1020,11 @@ classdef dce_tool < matlab.apps.AppBase
                 'Enable','off','ValueChangedFcn',@app.MaxValueChanged, ...
                 'Position',[140 72 100 22]);
 
+            app.AdvSettingsBtn = uibutton(app.Step4Panel, ...
+                'Text',[char(9881) ' Advanced Settings'], ...
+                'Position',[15 14 155 30], ...
+                'ButtonPushedFcn',@app.AdvSettingsButtonPushed);
+
             app.GenerateBtn = uibutton(app.Step4Panel, ...
                 'Text','Generate Design','BackgroundColor',[1.00 0.80 0.40], ...
                 'FontWeight','bold','Position',[360 14 140 40], ...
@@ -857,6 +1043,7 @@ classdef dce_tool < matlab.apps.AppBase
             app.DCEData = struct( ...
                 'Attributes',  [], ...
                 'ModelTerms',  {{}}, ...
+                'BaseLabels',  {{}}, ...
                 'Labels',      {{}}, ...
                 'PriorMean',   [], ...
                 'PriorVar',    [], ...
@@ -866,7 +1053,12 @@ classdef dce_tool < matlab.apps.AppBase
                 'NoChoice',    false, ...
                 'OrderEffect', false, ...
                 'Termination', 'adaptive', ...
-                'MaxValue',    []);
+                'MaxValue',    [], ...
+                'Coding',         'effect', ...
+                'SamplingMethod', 'SR', ...
+                'NDraws',         1000, ...
+                'UseSeed',        false, ...
+                'Seed',           1);
         end
     end
 

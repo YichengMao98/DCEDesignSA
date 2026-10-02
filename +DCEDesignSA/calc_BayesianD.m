@@ -38,10 +38,16 @@ function[DB, inf_error] = calc_BayesianD(xmat, pts, wts, cset)
         else
             % Infinite D-error case:
             inf_count = inf_count + 1;
-            DB = -10000; % Penalize singular or invalid matrices
         end
     end
     % Final calculation of the percentage of infinite draws
     inf_error = (inf_count / length(wts));
+    if inf_count > 0
+        % Penalize singular or invalid matrices. Pinned exactly to -10000
+        % here (rather than overwritten mid-loop) so DB is a stable function
+        % of inf_error: any other draws' log-det terms are discarded, not
+        % added on top of the sentinel. Matches update_information_matrix.m.
+        DB = -10000;
+    end
 
 end

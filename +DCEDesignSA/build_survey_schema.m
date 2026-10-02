@@ -1,48 +1,59 @@
 function design_struct = build_survey_schema(X_decoded)
-    % 获取表头和原始数据
-    headers = X_decoded(1, :);   
-    data = X_decoded(2:end, :);  
-    
+% BUILD_SURVEY_SCHEMA Split a decoded design into one entry per choice set.
+%
+%   INPUT:
+%       X_decoded - (cell array) Decoded design as returned by decode_X: the
+%                   first row holds the headers, column 1 the choice-set label,
+%                   column 2 the alternative label, columns 3+ the attributes.
+%
+%   OUTPUT:
+%       design_struct - (struct array) One element per choice set with fields
+%                       BlockName, Alternatives (table) and AltLabels.
+
+    % Headers and raw data
+    headers = X_decoded(1, :);
+    data = X_decoded(2:end, :);
+
     cs_column = data(:, 1);
     unique_cs = unique(cs_column, 'stable');
-    
+
     design_struct = struct('BlockName', {}, 'Alternatives', {}, 'AltLabels', {});
-    
+
     for i = 1:length(unique_cs)
         match_idx = strcmp(cs_column, unique_cs{i});
         cs_data = data(match_idx, :);
-        
+
         design_struct(i).BlockName = unique_cs{i};
-        
-        % 提取标签
+
+        % Alternative labels
         labels = cs_data(:, 2);
-        design_struct(i).AltLabels = string(labels); 
-        
-        % 提取属性（第3列往后）
+        design_struct(i).AltLabels = string(labels);
+
+        % Attribute values (column 3 onwards)
         attr_values = cs_data(:, 3:end);
         [rows, cols] = size(attr_values);
         clean_table_data = cell(rows, cols);
-        
+
         for r = 1:rows
             for c = 1:cols
                 val = attr_values{r, c};
-                
-                % --- 关键：递归拆解所有嵌套的 Cell 并强制转为数字 ---
+
+                % Unwrap any nested cells down to the underlying value
                 while iscell(val)
                     val = val{1};
                 end
-                
+
                 if isnumeric(val)
-                    % 核心：double(val) 配合 num2str 可以消除控制字符
-                    % 我们在这里先存为 double 类型的数字，而不是控制字符
+                    % Keep numeric levels as doubles (not as characters, which
+                    % could introduce control characters when converted)
                     clean_table_data{r, c} = double(val);
                 else
                     clean_table_data{r, c} = string(val);
                 end
             end
         end
-        
-        % 变量名处理
+
+        % Variable names for the table
         varNames = headers(3:end);
         design_struct(i).Alternatives = cell2table(clean_table_data, 'VariableNames', varNames);
     end

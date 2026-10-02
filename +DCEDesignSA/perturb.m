@@ -79,13 +79,14 @@ function [csRows, modified_X] = perturb(X, n_alt, nlevels, f, interactions, orde
         end
 % Only permute the regular alternative rows, not the no-choice placeholder
         regular_rows = rows(1:n_alt);
-        allPerms     = perms(1:n_alt);
-        orders       = 1:size(allPerms, 1);
-        currentOrder = X(regular_rows, end);
-        currentIndex = find(ismember(allPerms, currentOrder', 'rows'));
-        orders(orders == currentIndex) = [];
-        i        = orders(randi(length(orders)));
-        newOrder = allPerms(i, :);
+% Draw a random permutation different from the current one. Rejection
+% sampling is uniform over the other n_alt!-1 permutations (n_alt >= 2 so it
+% terminates) without enumerating all n_alt! of them.
+        currentOrder = X(regular_rows, end)';
+        newOrder     = currentOrder;
+        while isequal(newOrder, currentOrder)
+            newOrder = randperm(n_alt);
+        end
         modified_X(regular_rows, end) = newOrder';
         csRows = rows;
         return;

@@ -75,8 +75,14 @@ function X_decoded = decode_X(X, attr_names, varargin)
         for cs = 1:cset
             rows = (cs-1)*n_alt_total+1 : cs*n_alt_total;
             regular_rows = rows(1:n_alt);
+            % order(r) is the presentation position of row r (the same value
+            % encode() turns into the position covariate). The profile shown
+            % at position p is therefore the row r with order(r) == p, i.e.
+            % the inverse permutation — using order directly is only correct
+            % when the permutation is its own inverse.
             order = X(regular_rows, end);
-            X(regular_rows, 1:end-1) = X(regular_rows(order), 1:end-1);
+            [~, shown_row] = sort(order);
+            X(regular_rows, 1:end-1) = X(regular_rows(shown_row), 1:end-1);
         end
         X = X(:, 1:end-1);
     end

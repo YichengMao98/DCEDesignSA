@@ -4,10 +4,13 @@ function X_code = encode(X, nlevels, varargin)
 % appends an alternative-specific constant (ASC) column for the no-choice option.
 %
 %   This function serves as the main coding wrapper in the SA framework. It
-%   strips the presentation order column when order_effect is true, applies
-%   either effects coding or dummy coding to all attribute columns, and when
-%   no_choice is true, prepends an ASC column where the no-choice alternative
-%   receives ASC = 1 and all regular alternatives receive ASC = 0.
+%   applies either effects coding or dummy coding to all attribute columns,
+%   and when order_effect is true, codes the presentation-order column into
+%   (J-1) effects-coded position columns (the order covariate z of Mao,
+%   Kessels & Mee 2025, Eq. 3, with J = number of regular alternatives per
+%   choice set), so the position effect alpha enters the information matrix.
+%   When no_choice is true, it appends an ASC column where the no-choice
+%   alternative receives ASC = 1 and all regular alternatives receive ASC = 0.
 %
 %   The no-choice alternative is identified as the last row of each choice set
 %   and is expected to contain all zeros in its attribute columns. Its coded
@@ -15,8 +18,9 @@ function X_code = encode(X, nlevels, varargin)
 %
 %   INPUTS:
 %       X            - (matrix) Raw design matrix. If order_effect = true,
-%                      the last column stores presentation order and is excluded
-%                      from coding. If no_choice = true, the last row of each
+%                      the last column stores the presentation position
+%                      (1..J for regular alternatives, 0 for the no-choice
+%                      row). If no_choice = true, the last row of each
 %                      choice set is the no-choice alternative (all zeros).
 %       nlevels      - (vector) Number of levels for each attribute.
 %       interactions - (cell array) Pairs of attribute indices for which
@@ -29,14 +33,17 @@ function X_code = encode(X, nlevels, varargin)
 %                         - 'dummy': Dummy coding.
 %       no_choice    - (logical) Whether a no-choice alternative is present as
 %                      the last row of each choice set. When true, an ASC column
-%                      is prepended: ASC = 1 for no-choice rows, ASC = 0 otherwise.
+%                      is appended: ASC = 1 for no-choice rows, ASC = 0 otherwise.
 %                      Default: false.
 %
 %   OUTPUT:
-%       X_code       - (matrix) Coded design matrix. If no_choice = true, the
-%                      first column is the ASC indicator. The remaining columns
-%                      are the effect- or dummy-coded attribute columns, followed
-%                      by any interaction terms.
+%       X_code       - (matrix) Coded design matrix. Column order: the effect-
+%                      or dummy-coded attribute columns, then interaction
+%                      terms, then (if order_effect) the J-1 position columns
+%                      (position j < J -> unit vector e_j, position J -> all
+%                      -1, no-choice row -> all 0), then (if no_choice) the
+%                      ASC indicator last. This matches the prior_mean /
+%                      prior_var ordering used by dce_tool.
     p = inputParser;
     
     addRequired(p, 'X');
@@ -57,10 +64,11 @@ function X_code = encode(X, nlevels, varargin)
     coding       = p.Results.coding;
     no_choice    = p.Results.no_choice;
 
-% Strip the order column before coding since presentation order is not an
-% attribute and must not enter the information matrix computation
+% Split off the presentation-order column; it is coded separately below and
+% appended after the attribute/interaction columns.
     if order_effect
-        X_attr = X(:, 1:end-1);
+        X_attr    = X(:, 1:end-1);
+        order_pos = X(:, end);
     else
         X_attr = X;
     end
@@ -109,9 +117,32 @@ function X_code = encode(X, nlevels, varargin)
         X_code = [X_code, interactionMatrix];
     end
 
-% Prepend ASC column when no_choice is active.
+% Order covariate: effects-code the presentation position into J-1 columns.
+% Position j < J -> unit vector e_j; position J (last) -> all -1; rows with
+% position 0 (the no-choice row) -> all 0. J is recovered as the largest
+% position present, which is n_alt because every choice set contains a full
+% permutation 1..n_alt.
+    if order_effect
+        J = max(order_pos);
+        order_code = zeros(numRows, J - 1);
+        for row = 1:numRows
+            pos = order_pos(row);
+            if pos >= 1 && pos < J
+                order_code(row, pos) = 1;
+            elseif pos == J
+                order_code(row, :) = -1;
+            end
+        end
+        X_code = [X_code, order_code];
+    end
+
+% Append ASC column when no_choice is active.
 % The no-choice row (identified by all-zero attribute values) receives ASC = 1;
 % all regular alternative rows receive ASC = 0.
+% ASC goes LAST to match the prior_mean/prior_var/beta ordering used by
+% dce_tool (main effects, interactions, order positions, then the no-choice
+% ASC). Do not move it to the front — that misaligned the prior with the
+% columns and was a real SA/D-value bug.
     if no_choice
         asc_col = zeros(numRows, 1);
         for row = 1:numRows
@@ -119,7 +150,7 @@ function X_code = encode(X, nlevels, varargin)
                 asc_col(row) = 1;
             end
         end
-        X_code = [asc_col, X_code];
+        X_code = [X_code, asc_col];
     end
 
 end
