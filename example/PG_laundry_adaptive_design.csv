@@ -1,0 +1,46 @@
+ChoiceSet,Alternative,Material,Shape,CapFunctionality,Brand
+CS1,Alt1,Opaque,Pure,Double wall cap,Mas Color
+CS1,Alt2,Semitransparent,Goldie,Roller ball,Mas Color
+CS1,Alt3,Transparent,Isis,Spout + cap,Mas Color
+CS2,Alt1,Semitransparent,Goldie,Spout + cap,Mas Color
+CS2,Alt2,Opaque,Mas Color,Roller ball,Mas Color
+CS2,Alt3,Transparent,Pure shrink,Double wall cap,Mas Color
+CS3,Alt1,Transparent,Mas Color,Dosing ball,Mas Color
+CS3,Alt2,Opaque,Cooper,Dosing ball,Ariel
+CS3,Alt3,Semitransparent,Isis,Dosing ball,Ariel
+CS4,Alt1,Semitransparent,Goldie,Double wall cap,Mas Color
+CS4,Alt2,Semitransparent,Pure shrink,Dosing ball,Mas Color
+CS4,Alt3,Semitransparent,Mas Color,Roller ball,Ariel
+CS5,Alt1,Semitransparent,Mas Color,Double wall cap,Mas Color
+CS5,Alt2,Transparent,Cooper,Roller ball,Mas Color
+CS5,Alt3,Opaque,Pure shrink,Dosing ball,Mas Color
+CS6,Alt1,Transparent,Pure shrink,Roller ball,Mas Color
+CS6,Alt2,Transparent,Mas Color,Spout + cap,Mas Color
+CS6,Alt3,Semitransparent,Pure,Dosing ball,Mas Color
+CS7,Alt1,Transparent,Isis,Roller ball,Mas Color
+CS7,Alt2,Transparent,Pure,Dosing ball,Ariel
+CS7,Alt3,Transparent,Mas Color,Double wall cap,Mas Color
+CS8,Alt1,Semitransparent,Mas Color,Dosing ball,Ariel
+CS8,Alt2,Semitransparent,Isis,Double wall cap,Ariel
+CS8,Alt3,Transparent,Pure,Roller ball,Ariel
+CS9,Alt1,Transparent,Pure,Spout + cap,Ariel
+CS9,Alt2,Semitransparent,Mas Color,Dosing ball,Ariel
+CS9,Alt3,Transparent,Goldie,Roller ball,Ariel
+CS10,Alt1,Opaque,Isis,Dosing ball,Ariel
+CS10,Alt2,Transparent,Pure,Double wall cap,Ariel
+CS10,Alt3,Semitransparent,Pure shrink,Roller ball,Ariel
+CS11,Alt1,Transparent,Goldie,Dosing ball,Ariel
+CS11,Alt2,Semitransparent,Pure shrink,Spout + cap,Ariel
+CS11,Alt3,Opaque,Isis,Double wall cap,Ariel
+CS12,Alt1,Semitransparent,Cooper,Double wall cap,Ariel
+CS12,Alt2,Transparent,Isis,Dosing ball,Ariel
+CS12,Alt3,Opaque,Goldie,Spout + cap,Ariel
+CS13,Alt1,Transparent,Isis,Double wall cap,Ariel
+CS13,Alt2,Opaque,Goldie,Double wall cap,Ariel
+CS13,Alt3,Semitransparent,Cooper,Double wall cap,Mas Color
+CS14,Alt1,Semitransparent,Pure shrink,Spout + cap,Ariel
+CS14,Alt2,Semitransparent,Pure,Spout + cap,Mas Color
+CS14,Alt3,Transparent,Cooper,Spout + cap,Ariel
+CS15,Alt1,Semitransparent,Pure,Roller ball,Mas Color
+CS15,Alt2,Transparent,Pure shrink,Double wall cap,Mas Color
+CS15,Alt3,Transparent,Goldie,Dosing ball,Mas Color
