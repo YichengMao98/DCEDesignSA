@@ -1,0 +1,46 @@
+name: tests
+
+# Runs the DCEDesignSA test suite on Linux, Windows and macOS.
+# The GUI tests are skipped automatically if a uifigure cannot be created on
+# the runner; everything else (unit, invalid-input, portability) always runs.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: MATLAB ${{ matrix.release }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        release: [latest]
+        include:
+          # the minimum release named in the README
+          - os: ubuntu-latest
+            release: R2020b
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: ${{ matrix.release }}
+          # Needed only for the Halton sampling tests; without it they are skipped.
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Run tests
+        uses: matlab-actions/run-tests@v2
+        with:
+          source-folder: .
+          select-by-folder: tests
+          test-results-junit: test-results/results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.release }}
+          path: test-results/results.xml
