@@ -38,6 +38,37 @@ jobs:
           select-by-folder: tests
           test-results-junit: test-results/results.xml
 
+      # Publish the pass/fail/skip counts as an annotation, which is visible on
+      # the run page without signing in (unlike the logs and the artifact).
+      - name: Report test counts
+        if: always()
+        shell: bash
+        env:
+          LABEL: ${{ matrix.os }}, ${{ matrix.release }}
+        run: |
+          f=test-results/results.xml
+          if [ ! -f "$f" ]; then
+            echo "::error title=Test results ($LABEL)::No JUnit results file was produced"
+            exit 0
+          fi
+          # value of attribute $1 in one <testsuite ...> tag ($2)
+          attr() { printf '%s' "$2" | grep -o " $1=\"[0-9]*\"" | grep -o '[0-9][0-9]*' || echo 0; }
+          T=0; F=0; E=0; S=0; lines=""
+          while IFS= read -r tag; do
+            n=$(printf '%s' "$tag" | sed -n 's/.* name="\([^"]*\)".*/\1/p')
+            t=$(attr tests "$tag"); fl=$(attr failures "$tag"); er=$(attr errors "$tag"); sk=$(attr skipped "$tag")
+            T=$((T+t)); F=$((F+fl)); E=$((E+er)); S=$((S+sk))
+            lines="${lines}%0A${n}: ${t} tests, $((t-fl-er-sk)) passed, ${fl} failed, ${er} errors, ${sk} skipped"
+          done < <(grep -o '<testsuite [^>]*>' "$f")
+          P=$((T-F-E-S))
+          echo "::notice title=Test results ($LABEL)::Total ${T}: ${P} passed, ${F} failed, ${E} errors, ${S} skipped${lines}"
+          {
+            echo "### Test results ($LABEL)"
+            echo
+            echo "Total ${T}: ${P} passed, ${F} failed, ${E} errors, ${S} skipped"
+            printf '%s\n' "${lines//%0A/$'\n'- }"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
